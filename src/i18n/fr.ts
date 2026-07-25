@@ -1,0 +1,15 @@
+export const fr = {
+  "search.placeholder": "Que cherchez-vous aujourd'hui ?",
+  "search.button": "Rechercher",
+  "nav.search": "Rechercher",
+  "nav.categories": "Catégories",
+  "nav.questions": "Questions",
+  "nav.missions": "Missions",
+  "nav.account": "Mon compte",
+  "rating.public": "Note publique",
+  "rating.confidence": "Niveau de confiance",
+  "rating.compatibility": "Compatibilité avec votre recherche",
+  "review.share": "Partager mon expérience",
+  "common.save": "Enregistrer",
+  "common.cancel": "Annuler",
+} as const;

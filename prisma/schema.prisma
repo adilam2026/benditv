@@ -1,0 +1,1252 @@
+// RECOFIABLE — schéma de base de données
+// Toutes les données chargées par le seed sont fictives et de démonstration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Utilisateurs, comptes et sessions
+// ────────────────────────────────────────────────────────────────
+
+enum Role {
+  VISITOR
+  USER
+  VERIFIED_CONTRIBUTOR
+  PROFESSIONAL
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  LIMITED
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id             String     @id @default(cuid())
+  email          String     @unique
+  emailVerified  DateTime?
+  phone          String?
+  phoneVerified  DateTime?
+  passwordHash   String
+  name           String
+  role           Role       @default(USER)
+  status         UserStatus @default(ACTIVE)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  accounts            Account[]
+  sessions            Session[]
+  profile             UserProfile?
+  preferences         UserPreference?
+  consents            UserConsent[]
+  socialConnections   SocialConnection[]
+  circles             Circle[]
+  circleMemberships   CircleMember[]
+  following           Follow[]             @relation("follower")
+  followers           Follow[]             @relation("followed")
+  blocksGiven         Block[]              @relation("blocker")
+  blocksReceived      Block[]              @relation("blocked")
+  reviews             Review[]
+  reviewVotes         ReviewVote[]
+  trustScore          TrustScore?
+  fraudSignals        FraudSignal[]
+  reports             ModerationReport[]   @relation("reporter")
+  moderationDecisions ModerationDecision[]
+  appeals             Appeal[]
+  questions           Question[]
+  answers             QuestionAnswer[]
+  missionContribs     MissionContribution[]
+  favorites           Favorite[]
+  lists               List[]
+  listCollaborations  ListCollaborator[]
+  notifications       Notification[]
+  professionalRoles   ProfessionalMember[]
+  claims              PlaceClaim[]
+  quoteRequests       QuoteRequest[]
+  reservations        Reservation[]
+  searchLogs          SearchLog[]
+  auditLogs           AuditLog[]
+  passwordResets      PasswordResetToken[]
+  answerVotes         AnswerVote[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         DateTime?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  ip         String?
+  userAgent  String?
+  revokedAt  DateTime?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  displayName String?
+  bio         String?
+  avatarKey   String?
+  cityId      String?
+  zoneId      String?
+  language    String  @default("fr")
+  isPublic    Boolean @default(true)
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city        City?   @relation(fields: [cityId], references: [id])
+  zone        Zone?   @relation(fields: [zoneId], references: [id])
+  badges      UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  profileId String
+  code      String
+  label     String
+  awardedAt DateTime @default(now())
+  profile   UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, code])
+}
+
+model UserPreference {
+  id                 String  @id @default(cuid())
+  userId             String  @unique
+  favoriteCategories String[] // slugs de catégories
+  budgetLevel        Int?     // 1..4
+  hasChildren        Boolean  @default(false)
+  childrenAges       String?
+  dietary            String?
+  mobilityNeeds      Boolean  @default(false)
+  preferredZones     String[] // ids de zones
+  radiusKm           Int      @default(10)
+  notifyEmail        Boolean  @default(true)
+  notifyInApp        Boolean  @default(true)
+  notifyNetwork      Boolean  @default(true)
+  notifyMissions     Boolean  @default(true)
+  notifyPro          Boolean  @default(true)
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserConsent {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String   // cgu | confidentialite | geolocalisation | reseau | cookies
+  granted   Boolean
+  version   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+}
+
+model SocialConnection {
+  id         String   @id @default(cuid())
+  userId     String
+  provider   String   // demo | facebook | google (abstraction — non activé sans identifiants)
+  externalId String
+  status     String   @default("demo")
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalId])
+}
+
+// ── Réseau social interne ───────────────────────────────────────
+
+model Circle {
+  id        String   @id @default(cuid())
+  ownerId   String
+  name      String
+  kind      String   @default("custom") // famille | amis | collegues | parents | custom
+  createdAt DateTime @default(now())
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members   CircleMember[]
+
+  @@index([ownerId])
+}
+
+model CircleMember {
+  id       String @id @default(cuid())
+  circleId String
+  userId   String
+  circle   Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([circleId, userId])
+}
+
+enum FollowStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model Follow {
+  id         String       @id @default(cuid())
+  followerId String
+  followedId String
+  status     FollowStatus @default(ACCEPTED)
+  createdAt  DateTime     @default(now())
+  follower   User         @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followed   User         @relation("followed", fields: [followedId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followedId])
+  @@index([followedId])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+  blocker   User     @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Géographie
+// ────────────────────────────────────────────────────────────────
+
+model Country {
+  id       String @id @default(cuid())
+  code     String @unique // MA
+  name     String
+  currency String @default("MAD")
+  active   Boolean @default(true)
+  cities   City[]
+}
+
+model City {
+  id        String @id @default(cuid())
+  countryId String
+  slug      String @unique
+  name      String
+  active    Boolean @default(true)
+  country   Country @relation(fields: [countryId], references: [id])
+  zones     Zone[]
+  places    Place[]
+  profiles  UserProfile[]
+}
+
+model Zone {
+  id       String @id @default(cuid())
+  cityId   String
+  slug     String @unique
+  name     String
+  lat      Float?
+  lng      Float?
+  city     City   @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  places   Place[]
+  profiles UserProfile[]
+}
+
+// ────────────────────────────────────────────────────────────────
+// Taxonomie
+// ────────────────────────────────────────────────────────────────
+
+model Category {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  kind        String  @default("category") // universe | category | subcategory
+  parentId    String?
+  icon        String?
+  description String?
+  active      Boolean @default(true)
+  sortOrder   Int     @default(0)
+  parent      Category?  @relation("tree", fields: [parentId], references: [id])
+  children    Category[] @relation("tree")
+  translations CategoryTranslation[]
+  synonyms     CategorySynonym[]
+  places       Place[]
+  criteria     CategoryCriterion[]
+  specialties  Specialty[]
+  proposals    CategoryProposal[]
+
+  @@index([parentId])
+}
+
+model CategoryTranslation {
+  id         String   @id @default(cuid())
+  categoryId String
+  locale     String   // fr | ar
+  name       String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, locale])
+}
+
+model CategorySynonym {
+  id         String   @id @default(cuid())
+  categoryId String
+  term       String   // normalisé : minuscules sans accents
+  locale     String   @default("fr") // fr | ar | darija
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, term])
+  @@index([term])
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  MERGED
+  CONVERTED_TAG
+  CONVERTED_SPECIALTY
+  REJECTED
+}
+
+model CategoryProposal {
+  id           String         @id @default(cuid())
+  term         String
+  context      String?
+  requestCount Int            @default(1)
+  status       ProposalStatus @default(PENDING)
+  categoryId   String?        // catégorie de rattachement en cas de fusion
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  category     Category?      @relation(fields: [categoryId], references: [id])
+}
+
+model Specialty {
+  id         String   @id @default(cuid())
+  categoryId String
+  slug       String   @unique
+  name       String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  places     PlaceSpecialty[]
+}
+
+model Tag {
+  id     String @id @default(cuid())
+  slug   String @unique
+  name   String
+  kind   String @default("attribute") // attribute | need | service | equipment | context
+  places PlaceTag[]
+}
+
+model AttributeDefinition {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  kind        String  @default("boolean") // boolean | text | number | choice
+  description String?
+  attributes  PlaceAttribute[]
+}
+
+// ── Critères administrables ─────────────────────────────────────
+
+enum CriterionType {
+  YES_NO
+  SCALE
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  DURATION
+  AMOUNT
+  SHORT_TEXT
+  DATE
+  TIME
+  PHOTO
+  PROOF
+  LOCATION
+}
+
+model Criterion {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  name          String
+  description   String?
+  type          CriterionType
+  defaultWeight Float         @default(1)
+  required      Boolean       @default(false)
+  sortOrder     Int           @default(0)
+  showCondition String?       // ex: "context=avec-enfants"
+  needSlug      String?
+  active        Boolean       @default(true)
+  options       CriterionOption[]
+  categories    CategoryCriterion[]
+  answers       ReviewCriterionAnswer[]
+  placeScores   PlaceCriterionScore[]
+}
+
+model CriterionOption {
+  id          String    @id @default(cuid())
+  criterionId String
+  value       String
+  label       String
+  score       Float?    // contribution à la note (0..10), null = non noté
+  sortOrder   Int       @default(0)
+  criterion   Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([criterionId, value])
+}
+
+model CategoryCriterion {
+  id         String    @id @default(cuid())
+  categoryId String
+  criterionId String
+  weight     Float     @default(1)
+  required   Boolean   @default(false)
+  sortOrder  Int       @default(0)
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  criterion  Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, criterionId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Lieux et professionnels
+// ────────────────────────────────────────────────────────────────
+
+enum PlaceStatus {
+  ACTIVE
+  PENDING
+  ARCHIVED
+  MERGED
+}
+
+model Place {
+  id           String      @id @default(cuid())
+  slug         String      @unique
+  name         String
+  categoryId   String
+  cityId       String
+  zoneId       String?
+  status       PlaceStatus @default(ACTIVE)
+  verified     Boolean     @default(false) // informations vérifiées par la plateforme
+  claimed      Boolean     @default(false)
+  description  String?
+  priceLevel   Int?        // 1..4
+  avgPricePerPerson Int?   // MAD
+  phone        String?
+  whatsapp     String?
+  website      String?
+  email        String?
+  address      String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  mergedIntoId String?
+
+  category     Category    @relation(fields: [categoryId], references: [id])
+  city         City        @relation(fields: [cityId], references: [id])
+  zone         Zone?       @relation(fields: [zoneId], references: [id])
+  translations PlaceTranslation[]
+  location     PlaceLocation?
+  hours        PlaceHours[]
+  photos       PlacePhoto[]
+  attributes   PlaceAttribute[]
+  services     PlaceService[]
+  prices       PlacePrice[]
+  history      PlaceHistory[]
+  claims       PlaceClaim[]
+  specialtiesJoin PlaceSpecialty[]
+  tags         PlaceTag[]
+  reviews      Review[]
+  ratings      RatingSnapshot[]
+  criterionScores PlaceCriterionScore[]
+  fraudWaves   FraudWave[]
+  favorites    Favorite[]
+  listItems    ListItem[]
+  organization ProfessionalOrganization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  quoteRequests QuoteRequest[]
+  reservations  Reservation[]
+  sponsored     SponsoredPlacement[]
+  reports       ModerationReport[]
+  offers        Offer[]
+
+  @@index([categoryId])
+  @@index([cityId, zoneId])
+  @@index([status])
+}
+
+model PlaceTranslation {
+  id      String @id @default(cuid())
+  placeId String
+  locale  String
+  name    String
+  description String?
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, locale])
+}
+
+model PlaceLocation {
+  id      String @id @default(cuid())
+  placeId String @unique
+  lat     Float
+  lng     Float
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+}
+
+model PlaceHours {
+  id        String  @id @default(cuid())
+  placeId   String
+  dayOfWeek Int     // 0 = dimanche .. 6 = samedi
+  openMin   Int     // minutes depuis minuit
+  closeMin  Int
+  place     Place   @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
+}
+
+model PlacePhoto {
+  id         String   @id @default(cuid())
+  placeId    String
+  url        String   // placeholder local ou fichier uploadé
+  caption    String?
+  source     String   @default("community") // community | professional
+  hash       String?
+  createdAt  DateTime @default(now())
+  hidden     Boolean  @default(false)
+  place      Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
+  @@index([hash])
+}
+
+model PlaceAttribute {
+  id           String  @id @default(cuid())
+  placeId      String
+  definitionId String
+  value        String  // "true" | "false" | texte
+  source       String  @default("professional") // professional | community | platform
+  place        Place   @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  definition   AttributeDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, definitionId])
+}
+
+model PlaceService {
+  id      String @id @default(cuid())
+  placeId String
+  name    String
+  detail  String?
+  price   Int?
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+}
+
+model PlacePrice {
+  id      String @id @default(cuid())
+  placeId String
+  label   String
+  amount  Int
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+}
+
+model PlaceHistory {
+  id        String   @id @default(cuid())
+  placeId   String
+  kind      String   // proprietaire | renovation | adresse | menu | horaires | note | evenement
+  detail    String
+  createdAt DateTime @default(now())
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
+}
+
+model PlaceSpecialty {
+  id          String    @id @default(cuid())
+  placeId     String
+  specialtyId String
+  place       Place     @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  specialty   Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, specialtyId])
+}
+
+model PlaceTag {
+  id      String @id @default(cuid())
+  placeId String
+  tagId   String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, tagId])
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model PlaceClaim {
+  id          String      @id @default(cuid())
+  placeId     String
+  userId      String
+  roleInOrg   String
+  proofNote   String?
+  proPhone    String?
+  proEmail    String?
+  status      ClaimStatus @default(PENDING)
+  decidedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  place       Place       @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+model ProfessionalOrganization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  members   ProfessionalMember[]
+  places    Place[]
+  subscriptions Subscription[]
+  leads     Lead[]
+}
+
+model ProfessionalMember {
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String @default("owner") // owner | manager | staff
+  organization   ProfessionalOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+}
+
+model Offer {
+  id        String   @id @default(cuid())
+  placeId   String
+  title     String
+  detail    String?
+  startsAt  DateTime
+  endsAt    DateTime
+  active    Boolean  @default(true)
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────────
+// Expériences (avis)
+// ────────────────────────────────────────────────────────────────
+
+enum ReviewStatus {
+  DRAFT
+  PUBLISHED
+  PENDING_MODERATION
+  NEUTRALIZED    // temporairement exclu du calcul (anti-fraude)
+  EXCLUDED
+  SUSPENDED
+  DELETED
+}
+
+enum ReviewVisibility {
+  PUBLIC
+  NETWORK
+  PRIVATE
+}
+
+enum VerificationLevel {
+  DECLARED       // niveau 0
+  COHERENT       // niveau 1
+  VISIT_CONFIRMED    // niveau 2
+  TRANSACTION_CONFIRMED // niveau 3
+}
+
+model Review {
+  id            String           @id @default(cuid())
+  placeId       String
+  userId        String
+  status        ReviewStatus     @default(PUBLISHED)
+  visibility    ReviewVisibility @default(PUBLIC)
+  mode          String           @default("express") // express | guide | detaille
+  visitedAt     DateTime
+  context       String?          // famille | couple | amis | travail | solo | livraison
+  groupType     String?
+  needSlug      String?
+  comment       String?
+  positives     String?
+  cautions      String?
+  tip           String?
+  pricePaid     Int?
+  weight        Float            @default(1)   // poids anti-fraude appliqué au calcul
+  riskScore     Float            @default(0)
+  helpfulCount  Int              @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  place         Place            @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers       ReviewCriterionAnswer[]
+  photos        ReviewPhoto[]
+  evidences     ReviewEvidence[]
+  verification  ReviewVerification?
+  revisions     ReviewRevision[]
+  votes         ReviewVote[]
+  proResponse   ProfessionalResponse?
+  fraudSignals  FraudSignal[]
+  reports       ModerationReport[]
+
+  @@index([placeId, status])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ReviewCriterionAnswer {
+  id          String    @id @default(cuid())
+  reviewId    String
+  criterionId String
+  value       String    // valeur brute (option, nombre, texte)
+  score       Float?    // score 0..10 dérivé
+  review      Review    @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  criterion   Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, criterionId])
+}
+
+model ReviewPhoto {
+  id       String @id @default(cuid())
+  reviewId String
+  url      String
+  hash     String?
+  hidden   Boolean @default(false)
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([hash])
+}
+
+model ReviewEvidence {
+  id       String @id @default(cuid())
+  reviewId String
+  kind     String // ticket | reservation | geoloc | qr | photo-originale
+  status   String @default("pending") // pending | accepted | rejected
+  note     String? // jamais de données sensibles brutes
+  createdAt DateTime @default(now())
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model ReviewVerification {
+  id       String            @id @default(cuid())
+  reviewId String            @unique
+  level    VerificationLevel @default(DECLARED)
+  method   String?           // libellé public : "Visite confirmée", etc.
+  createdAt DateTime         @default(now())
+  review   Review            @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model ReviewRevision {
+  id        String   @id @default(cuid())
+  reviewId  String
+  snapshot  Json
+  createdAt DateTime @default(now())
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model ReviewVote {
+  id       String @id @default(cuid())
+  reviewId String
+  userId   String
+  helpful  Boolean @default(true)
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+}
+
+model ProfessionalResponse {
+  id        String   @id @default(cuid())
+  reviewId  String   @unique
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────────
+// Notation et confiance
+// ────────────────────────────────────────────────────────────────
+
+model RatingSnapshot {
+  id               String   @id @default(cuid())
+  placeId          String
+  rating           Float    // note publique /10 (bayésienne)
+  rawAverage       Float
+  confidence       String   // faible | moyenne | elevee | tres-elevee
+  confidenceScore  Float
+  reviewCount      Int
+  recentCount      Int      // 12 derniers mois
+  verifiedCount    Int
+  excludedCount    Int
+  dispersion       Float
+  trend            Float    // delta 6 mois
+  computedAt       DateTime @default(now())
+  isCurrent        Boolean  @default(true)
+  place            Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId, isCurrent])
+}
+
+model PlaceCriterionScore {
+  id          String   @id @default(cuid())
+  placeId     String
+  criterionId String
+  score       Float
+  count       Int
+  place       Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  criterion   Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, criterionId])
+}
+
+model TrustScore {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  score          Float    @default(0.5) // 0..1, interne, non exposé
+  contributions  Int      @default(0)
+  verifiedRate   Float    @default(0)
+  diversity      Int      @default(0)
+  flaggedRate    Float    @default(0)
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────────
+// Anti-fraude
+// ────────────────────────────────────────────────────────────────
+
+model FraudSignal {
+  id        String   @id @default(cuid())
+  kind      String   // burst | duplicate-text | extreme | single-place | device | ip | geo
+  severity  Float    // 0..1
+  detail    String?
+  reviewId  String?
+  userId    String?
+  caseId    String?
+  createdAt DateTime @default(now())
+  review    Review?  @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  case_     FraudCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  @@index([kind])
+  @@index([reviewId])
+}
+
+enum FraudCaseStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model FraudCase {
+  id         String          @id @default(cuid())
+  title      String
+  riskScore  Float
+  status     FraudCaseStatus @default(OPEN)
+  decision   String?
+  createdAt  DateTime        @default(now())
+  resolvedAt DateTime?
+  signals    FraudSignal[]
+  waves      FraudWave[]
+}
+
+model FraudWave {
+  id          String   @id @default(cuid())
+  placeId     String
+  caseId      String?
+  startedAt   DateTime
+  endedAt     DateTime?
+  reviewCount Int
+  avgRating   Float
+  riskScore   Float
+  status      String   @default("detected") // detected | neutralized | cleared
+  note        String?
+  place       Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  case_       FraudCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  @@index([placeId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Modération
+// ────────────────────────────────────────────────────────────────
+
+enum ReportStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model ModerationReport {
+  id         String       @id @default(cuid())
+  reporterId String
+  reviewId   String?
+  placeId    String?
+  targetKind String       // review | photo | place | pro-response
+  reason     String       // faux-avis | conflit | injurieux | donnees-perso | photo | pub | hors-sujet | incorrect | harcelement | dangereux
+  detail     String?
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime     @default(now())
+  reporter   User         @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  review     Review?      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  place      Place?       @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  decisions  ModerationDecision[]
+
+  @@index([status])
+}
+
+model ModerationDecision {
+  id          String   @id @default(cuid())
+  reportId    String?
+  moderatorId String
+  action      String   // suspend | restore | ask-proof | hide | dismiss | merge | warn
+  reason      String
+  createdAt   DateTime @default(now())
+  report      ModerationReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  moderator   User     @relation(fields: [moderatorId], references: [id], onDelete: Cascade)
+  appeals     Appeal[]
+}
+
+model Appeal {
+  id         String   @id @default(cuid())
+  decisionId String
+  userId     String
+  body       String
+  status     String   @default("open") // open | accepted | rejected
+  createdAt  DateTime @default(now())
+  decision   ModerationDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────────
+// Questions communautaires et missions
+// ────────────────────────────────────────────────────────────────
+
+model Question {
+  id         String   @id @default(cuid())
+  userId     String
+  title      String
+  body       String?
+  citySlug   String?
+  zoneSlug   String?
+  categorySlug String?
+  status     String   @default("open") // open | answered | closed
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers    QuestionAnswer[]
+
+  @@index([status])
+}
+
+model QuestionAnswer {
+  id         String   @id @default(cuid())
+  questionId String
+  userId     String
+  placeSlug  String?
+  body       String
+  votes      Int      @default(0)
+  createdAt  DateTime @default(now())
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voteRows   AnswerVote[]
+}
+
+model AnswerVote {
+  id       String @id @default(cuid())
+  answerId String
+  userId   String
+  answer   QuestionAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, userId])
+}
+
+model Mission {
+  id          String   @id @default(cuid())
+  title       String
+  objective   String
+  citySlug    String?
+  zoneSlug    String?
+  categorySlug String?
+  criteria    String?
+  startsAt    DateTime
+  endsAt      DateTime
+  targetCount Int      @default(20)
+  badgeCode   String?
+  reward      String?
+  summary     String?
+  status      String   @default("active") // active | closed
+  contributions MissionContribution[]
+}
+
+model MissionContribution {
+  id        String   @id @default(cuid())
+  missionId String
+  userId    String
+  reviewId  String?
+  note      String?
+  createdAt DateTime @default(now())
+  mission   Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([missionId, userId, reviewId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Favoris et listes
+// ────────────────────────────────────────────────────────────────
+
+model Favorite {
+  id      String @id @default(cuid())
+  userId  String
+  placeId String
+  createdAt DateTime @default(now())
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, placeId])
+}
+
+model List {
+  id         String   @id @default(cuid())
+  ownerId    String
+  title      String
+  description String?
+  visibility String   @default("private") // private | public | link
+  shareToken String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items      ListItem[]
+  collaborators ListCollaborator[]
+}
+
+model ListItem {
+  id      String @id @default(cuid())
+  listId  String
+  placeId String
+  note    String?
+  sortOrder Int  @default(0)
+  list    List   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, placeId])
+}
+
+model ListCollaborator {
+  id     String @id @default(cuid())
+  listId String
+  userId String
+  list   List   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, userId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Notifications
+// ────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Abonnements et monétisation
+// ────────────────────────────────────────────────────────────────
+
+model SubscriptionPlan {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  priceMad    Int?    // null = sur devis
+  period      String  @default("month")
+  features    String[]
+  maxPhotos   Int     @default(3)
+  statsLevel  Int     @default(0) // 0 simple, 1 enrichi, 2 avancé, 3 réseau
+  active      Boolean @default(true)
+  sortOrder   Int     @default(0)
+  subscriptions Subscription[]
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  CANCELED
+  EXPIRED
+}
+
+model Subscription {
+  id             String             @id @default(cuid())
+  organizationId String
+  planId         String
+  status         SubscriptionStatus @default(ACTIVE)
+  startedAt      DateTime           @default(now())
+  endsAt         DateTime?
+  canceledAt     DateTime?
+  organization   ProfessionalOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan           SubscriptionPlan   @relation(fields: [planId], references: [id])
+  invoices       Invoice[]
+}
+
+model Invoice {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  number         String   @unique
+  amountMad      Int
+  status         String   @default("paid") // demo : paid | pending
+  issuedAt       DateTime @default(now())
+  isDemo         Boolean  @default(true)
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  organizationId String
+  kind           String   // contact | devis | reservation
+  name           String
+  email          String?
+  phone          String?
+  message        String?
+  createdAt      DateTime @default(now())
+  organization   ProfessionalOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model QuoteRequest {
+  id        String   @id @default(cuid())
+  placeId   String
+  userId    String
+  need      String
+  budget    Int?
+  date      DateTime?
+  message   String?
+  status    String   @default("new") // new | answered | closed
+  createdAt DateTime @default(now())
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Reservation {
+  id        String   @id @default(cuid())
+  placeId   String
+  userId    String
+  date      DateTime
+  partySize Int
+  note      String?
+  status    String   @default("pending") // pending | confirmed | canceled
+  createdAt DateTime @default(now())
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SponsoredPlacement {
+  id        String   @id @default(cuid())
+  placeId   String
+  label     String   @default("Sponsorisé")
+  citySlug  String?
+  categorySlug String?
+  startsAt  DateTime
+  endsAt    DateTime
+  active    Boolean  @default(true)
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────────
+// Journaux et paramètres
+// ────────────────────────────────────────────────────────────────
+
+model SearchLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  rawQuery   String
+  parsed     Json?
+  resultCount Int     @default(0)
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+model RecommendationLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  placeId   String?
+  query     String?
+  score     Float?
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  kind      String   // search | click | favorite | share | review-start | review-done | quote | reservation | signup
+  userId    String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  target    String?
+  detail    String?
+  createdAt DateTime @default(now())
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key       String @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
