@@ -40,6 +40,12 @@ function esc(s) {
 }
 function byId(id) { return PLACES.find((p) => p.id === id); }
 
+// Image d'un lieu avec vraie photo (LoremFlickr) en premier essai et
+// illustration locale en secours automatique si la photo ne charge pas.
+function placeImgTag(realUrl, fallbackUrl, name, extraAttrs) {
+  return `<img src="${esc(realUrl)}" data-fallback="${esc(fallbackUrl)}" loading="lazy" onerror="this.onerror=null;this.src=this.dataset.fallback" alt="Photo de ${esc(name)}" ${extraAttrs || ""}>`;
+}
+
 // ───────────────────────── Icônes (SVG inline, sobres) ─────────────────────────
 function icon(name, cls) {
   const c = `icon ${cls || ""}`;
@@ -241,7 +247,7 @@ function placeCardFull(p, rankTag) {
   return `
   <article class="pcard pcard-full">
     <div class="photo" data-action="goto" data-route="#/lieu/${p.id}">
-      <img src="${p.image}" alt="Photo de ${esc(p.name)} (illustration)">
+      ${placeImgTag(p.photo, p.image, p.name)}
       <span class="rating-badge">${p.rating.toFixed(1)}</span>
       <button class="icon-btn save-fab ${saved ? "on" : ""}" data-action="toggle-save" data-id="${p.id}" aria-label="Enregistrer">
         ${icon(saved ? "heart-filled" : "heart", "icon-sm")}
@@ -267,7 +273,7 @@ function placeCardMini(p) {
   return `
   <article class="pcard">
     <div class="photo" data-action="goto" data-route="#/lieu/${p.id}">
-      <img src="${p.image}" alt="Photo de ${esc(p.name)} (illustration)">
+      ${placeImgTag(p.photo, p.image, p.name)}
       <span class="rating-badge">${p.rating.toFixed(1)}</span>
       <button class="icon-btn save-fab ${saved ? "on" : ""}" data-action="toggle-save" data-id="${p.id}" aria-label="Enregistrer">
         ${icon(saved ? "heart-filled" : "heart", "icon-sm")}
@@ -496,7 +502,7 @@ function renderPlaceDetail(id) {
   return `
   <div class="view">
     <div class="place-hero">
-      <img src="${p.images[gi % p.images.length]}" alt="Photo de ${esc(p.name)} (illustration)" data-action="cycle-gallery" data-id="${p.id}">
+      ${placeImgTag(p.photos[gi % p.photos.length], p.images[gi % p.images.length], p.name, `data-action="cycle-gallery" data-id="${p.id}"`)}
       <button class="icon-btn back-btn" data-action="back" aria-label="Retour">${icon("arrow-left")}</button>
       <div class="actions-row">
         <button class="icon-btn ${saved ? "on" : ""}" data-action="toggle-save" data-id="${p.id}" aria-label="Enregistrer">${icon(saved ? "heart-filled" : "heart", "icon-sm")}</button>
@@ -534,7 +540,7 @@ function renderPlaceDetail(id) {
     </div>
 
     <div class="accordion">
-      ${acc("photos", "Photos", `<div class="eq-chips">${p.images.map((img) => `<img src="${img}" style="width:100%;max-width:140px;height:90px;object-fit:cover;border-radius:12px" alt="Photo de ${esc(p.name)}">`).join("")}</div>`)}
+      ${acc("photos", "Photos", `<div class="eq-chips">${p.photos.map((photoSrc, i) => placeImgTag(photoSrc, p.images[i % p.images.length], p.name, `style="width:100%;max-width:140px;height:90px;object-fit:cover;border-radius:12px"`)).join("")}</div>`)}
       ${acc("savoir", "Ce qu'il faut savoir", `<p style="font-size:14px;color:var(--ink-2);line-height:1.5">${esc(p.description || "Adresse évaluée par la communauté RECOFIABLE (données fictives de démonstration).")}</p><div class="eq-chips">${p.tags.map((t) => `<span class="chip">${esc(t.replace(/-/g, " "))}</span>`).join("")}</div>`)}
       ${acc("criteres", "Notes par critère", `
         ${allCrit.map(([key, label]) => `<div class="crit-row"><span class="lab">${esc(label)}</span><div class="bar"><span style="width:${((p.criteriaScores[key] ?? (p.rating)) / 10) * 100}%"></span></div><span class="val">${(p.criteriaScores[key] ?? p.rating).toFixed(1)}</span></div>`).join("")}
@@ -597,7 +603,7 @@ function renderContributeSelect() {
     <div class="pick-list">
       ${list.map((p) => `
         <button class="pick-item" data-action="select-contrib-place" data-id="${p.id}">
-          <img src="${p.image}" alt="">
+          ${placeImgTag(p.photo, p.image, p.name)}
           <div class="info"><div class="name">${esc(p.name)}</div><div class="meta">${esc(p.zone)} · ${p.distanceMin} min</div></div>
           ${icon("chevron-right", "icon-sm")}
         </button>`).join("")}
@@ -927,7 +933,7 @@ function openPinSheet(id) {
   const html = `
     <div class="sheet-handle"></div>
     <div class="sheet-inner">
-      <img src="${p.image}" style="width:100%;height:150px;object-fit:cover;border-radius:14px" alt="">
+      ${placeImgTag(p.photo, p.image, p.name, `style="width:100%;height:150px;object-fit:cover;border-radius:14px"`)}
       <h3 style="margin-top:12px">${esc(p.name)}</h3>
       <div class="place-rating-row" style="margin-top:8px"><div class="rating-big">${p.rating.toFixed(1)}</div><div style="font-size:13px;color:var(--ink-2)">${esc(p.zone)} · ${p.distanceMin} min<br>${esc(p.reasons[0])}</div></div>
       <button class="btn btn-primary btn-block" style="margin-top:16px" data-action="goto" data-route="#/lieu/${p.id}">Voir la fiche</button>

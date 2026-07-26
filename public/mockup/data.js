@@ -104,6 +104,35 @@ const ZONE_LATLNG = {
 };
 const USER_LATLNG = [33.5551, -7.6389]; // Position simulée de l'utilisateur (centre de Casablanca)
 
+// ── Vraies photos libres de droits (LoremFlickr, par mot-clé de catégorie) ──
+// Chaque lieu fictif est illustré par une photo réelle représentative de sa
+// catégorie (pas une photo du lieu lui-même, qui n'existe pas). En cas
+// d'indisponibilité du service, l'illustration locale (assets/*.svg) prend
+// automatiquement le relais (voir data-fallback dans app.js).
+const CATEGORY_PHOTO_KEYWORDS = {
+  restaurant: "restaurant,food",
+  cafe: "cafe,coffeeshop",
+  parc: "playground,park",
+  "activite-enfant": "kids,activity",
+  pediatre: "medical,clinic",
+  coiffeur: "hairsalon,barber",
+  service: "handyman,repair",
+  sport: "gym,fitness",
+  nautique: "surfing,beach",
+};
+
+function hashSeed(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h % 100000;
+}
+
+function photoUrl(id, category, variant) {
+  const kw = CATEGORY_PHOTO_KEYWORDS[category] || "business";
+  const lock = hashSeed(id + "-" + variant);
+  return `https://loremflickr.com/640/400/${encodeURIComponent(kw)}/all?lock=${lock}`;
+}
+
 const NETWORK = [
   { name: "Omar", color: "#0f766e" },
   { name: "Kenza", color: "#b45309" },
@@ -211,6 +240,8 @@ function buildPlace(id, name, category, zone, quality, extra) {
     city: "Casablanca",
     image: img,
     images: images.length > 1 ? images : [img, img],
+    photo: photoUrl(id, category, 0),
+    photos: [photoUrl(id, category, 0), photoUrl(id, category, 1), photoUrl(id, category, 2)],
     rating: Math.round(quality * 10) / 10,
     confidence,
     reviewsCount,
